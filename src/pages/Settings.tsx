@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -7,6 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Settings as SettingsIcon, Globe, Moon, Sun, Volume2, Bell } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { useLanguage } from '@/hooks/useLanguage';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useToast } from '@/hooks/use-toast';
 
 const INDIAN_LANGUAGES = [
   { code: 'en', name: 'English', native: 'English' },
@@ -25,11 +27,25 @@ const INDIAN_LANGUAGES = [
 
 export const Settings = () => {
   const { theme, setTheme } = useTheme();
-  const [defaultLanguage, setDefaultLanguage] = useState('en');
-  const [autoTranslate, setAutoTranslate] = useState(true);
-  const [ttsEnabled, setTtsEnabled] = useState(true);
-  const [notifications, setNotifications] = useState(true);
-  const [biometricConsent, setBiometricConsent] = useState(true);
+  const { toast } = useToast();
+  const { 
+    language, 
+    setLanguage, 
+    autoTranslate, 
+    setAutoTranslate, 
+    ttsEnabled, 
+    setTtsEnabled 
+  } = useLanguage();
+  const [notifications, setNotifications] = useLocalStorage('hexavision-notifications', true);
+  const [biometricConsent, setBiometricConsent] = useLocalStorage('hexavision-biometric', true);
+
+  const handleLanguageChange = (value: string) => {
+    setLanguage(value);
+    toast({
+      title: "Language Updated",
+      description: `Interface language changed to ${INDIAN_LANGUAGES.find(l => l.code === value)?.name}`,
+    });
+  };
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-8">
@@ -55,7 +71,7 @@ export const Settings = () => {
           <CardContent className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="default-language">Default Interface Language</Label>
-              <Select value={defaultLanguage} onValueChange={setDefaultLanguage}>
+              <Select value={language} onValueChange={handleLanguageChange}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select language" />
                 </SelectTrigger>
@@ -151,7 +167,7 @@ export const Settings = () => {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <SettingsIcon className="h-5 w-5 mr-2 text-primary" />
+              <Bell className="h-5 w-5 mr-2 text-primary" />
               Security & Privacy
             </CardTitle>
           </CardHeader>
@@ -160,42 +176,32 @@ export const Settings = () => {
               <div className="space-y-0.5">
                 <Label>Biometric Consent Required</Label>
                 <p className="text-sm text-muted-foreground">
-                  Always require fingerprint + voice for document consent
+                  Require fingerprint and voice verification for evidence generation
                 </p>
               </div>
               <Switch checked={biometricConsent} onCheckedChange={setBiometricConsent} />
             </div>
 
             <div className="flex items-center justify-between">
-              <div className="space-y-0.5 flex items-center">
-                <Bell className="h-4 w-4 mr-2 text-muted-foreground" />
-                <div>
-                  <Label>Processing Notifications</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Get notified when document analysis completes
-                  </p>
-                </div>
+              <div className="space-y-0.5">
+                <Label>Push Notifications</Label>
+                <p className="text-sm text-muted-foreground">
+                  Receive notifications about document processing status
+                </p>
               </div>
               <Switch checked={notifications} onCheckedChange={setNotifications} />
-            </div>
-
-            <Separator />
-
-            <div className="space-y-4">
-              <h4 className="font-medium">Data Retention</h4>
-              <div className="text-sm text-muted-foreground space-y-2">
-                <p>• Document evidence is permanently stored with cryptographic signatures</p>
-                <p>• Biometric data is hashed and cannot be reverse-engineered</p>
-                <p>• All data is encrypted at rest and in transit</p>
-              </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Save Settings */}
-        <div className="flex justify-end space-x-4">
-          <Button variant="outline">Reset to Defaults</Button>
-          <Button>Save Settings</Button>
+        <div className="flex justify-end">
+          <Button onClick={() => toast({
+            title: "Settings Saved",
+            description: "Your preferences have been saved successfully."
+          })}>
+            Save Changes
+          </Button>
         </div>
       </div>
     </div>

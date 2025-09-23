@@ -82,20 +82,29 @@ export const DocumentUpload = () => {
       // Process with edge function
       setCurrentStep("Analyzing document content...");
       
+      // Create FormData for edge function
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('userId', user.id);
+      
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke(
         'upload-document',
         {
-          body: {
-            document_id: docData.id,
-            file_path: filePath
-          }
+          body: formData
         }
       );
 
       if (analysisError) throw analysisError;
       
-      setOcrText(analysisData.ocr_text || "No text extracted");
-      setCurrentPhase('analysis');
+      // Check if analysis data is available or still processing
+      if (analysisData.status === 'processing') {
+        setDocumentId(analysisData.document_id);
+        setOcrText("Document processing started...");
+        setCurrentPhase('analysis');
+      } else {
+        setOcrText(analysisData.ocr_text || "No text extracted");
+        setCurrentPhase('analysis');
+      }
       
       toast({
         title: "Document uploaded successfully",

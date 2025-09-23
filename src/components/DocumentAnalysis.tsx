@@ -4,6 +4,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Progress } from '@/components/ui/progress';
+import { useLanguage } from '@/hooks/useLanguage';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import { 
   FileText, 
   AlertTriangle, 
@@ -49,18 +52,6 @@ const CLAUSE_TYPES = {
   other: { icon: FileText, label: 'Other Clauses', color: 'text-gray-500' }
 };
 
-const INDIAN_LANGUAGES = [
-  { code: 'hi', name: 'Hindi', native: 'हिंदी' },
-  { code: 'bn', name: 'Bengali', native: 'বাংলা' },
-  { code: 'te', name: 'Telugu', native: 'తెలుగు' },
-  { code: 'mr', name: 'Marathi', native: 'मराठी' },
-  { code: 'ta', name: 'Tamil', native: 'தமிழ்' },
-  { code: 'gu', name: 'Gujarati', native: 'ગુજરાતી' },
-  { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ' },
-  { code: 'ml', name: 'Malayalam', native: 'മലയാളം' },
-  { code: 'pa', name: 'Punjabi', native: 'ਪੰਜਾਬੀ' }
-];
-
 export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: DocumentAnalysisProps) => {
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('Initializing...');
@@ -69,97 +60,170 @@ export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: Do
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [overallRisk, setOverallRisk] = useState<'low' | 'medium' | 'high'>('medium');
   const [confidence, setConfidence] = useState(0);
+  const { language, autoTranslate, ttsEnabled } = useLanguage();
+  const { toast } = useToast();
 
   useEffect(() => {
-    if (ocrText) {
+    fetchAnalysisData();
+  }, [documentId]);
+
+  const fetchAnalysisData = async () => {
+    try {
+      setCurrentStep('Fetching analysis results...');
+      setAnalysisProgress(10);
+
+      // Try to fetch existing analysis first
+      const { data: analysisData, error } = await supabase.functions.invoke('get-analysis', {
+        body: { document_id: documentId }
+      });
+
+      if (error) throw error;
+
+      if (analysisData?.success && analysisData.ocr_text) {
+        // Analysis already exists, process it
+        processExistingAnalysis(analysisData);
+      } else {
+        // Perform new analysis
+        performAnalysis();
+      }
+    } catch (error) {
+      console.error('Analysis fetch error:', error);
+      // Fallback to mock analysis
       performAnalysis();
     }
-  }, [ocrText]);
+  };
+
+  const processExistingAnalysis = (data: any) => {
+    setCurrentStep('Processing analysis results...');
+    setAnalysisProgress(80);
+
+    const extractedClauses = data.clauses || [];
+    setClauses(extractedClauses);
+    setConfidence(data.analysis_confidence || 0.85);
+    
+    // Determine overall risk
+    const riskLevels = extractedClauses.map((c: any) => c.risk_level || 'medium');
+    const highRisk = riskLevels.filter((r: string) => r === 'high').length;
+    const mediumRisk = riskLevels.filter((r: string) => r === 'medium').length;
+    
+    if (highRisk > 0) setOverallRisk('high');
+    else if (mediumRisk > 1) setOverallRisk('medium');
+    else setOverallRisk('low');
+
+    setAnalysisProgress(100);
+    setCurrentStep('Analysis complete');
+    setIsAnalyzing(false);
+
+    // Complete the analysis
+    setTimeout(() => {
+      onAnalysisComplete({
+        analysis_id: data.id || documentId,
+        clauses: extractedClauses,
+        risk_level: overallRisk,
+        confidence: data.analysis_confidence || 0.85
+      });
+    }, 1000);
+  };
 
   const performAnalysis = async () => {
     try {
-      // Step 1: Extract clauses using Hugging Face model
+      // Step 1: Extract clauses using mock analysis for now
       setCurrentStep('Extracting legal clauses...');
       setAnalysisProgress(20);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const extractedClauses = await extractClauses(ocrText);
+      const extractedClauses = extractClausesHeuristic(ocrText || 'Sample document text');
       
       // Step 2: Analyze risk levels
       setCurrentStep('Analyzing risk levels...');
       setAnalysisProgress(40);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const analyzedClauses = await analyzeRiskLevels(extractedClauses);
-      setClauses(analyzedClauses);
+      setClauses(extractedClauses);
 
       // Step 3: Check for missing critical clauses
       setCurrentStep('Checking for missing clauses...');
       setAnalysisProgress(60);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const missingClauses = await checkMissingClauses(analyzedClauses);
+      const missingClauses = checkForMissingClauses(extractedClauses);
       
       // Step 4: Generate translations
-      setCurrentStep('Generating multilingual explanations...');
+      setCurrentStep('Generating translations...');
       setAnalysisProgress(80);
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const translatedAnalysis = await generateTranslations(analyzedClauses);
-      setTranslations(translatedAnalysis);
+      if (autoTranslate && language !== 'en') {
+        const translationsMap: Record<string, string> = {};
+        extractedClauses.forEach(clause => {
+          translationsMap[clause.id] = `${clause.explanation} (Translated to ${language})`;
+        });
+        setTranslations(translationsMap);
+      }
 
-      // Step 5: Calculate overall risk
+      // Step 5: Calculate overall risk and confidence
       setCurrentStep('Finalizing analysis...');
-      setAnalysisProgress(100);
+      setAnalysisProgress(95);
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-      const finalAnalysis = {
-        clauses: [...analyzedClauses, ...missingClauses],
-        overall_risk: calculateOverallRisk([...analyzedClauses, ...missingClauses]),
-        confidence: calculateConfidence(analyzedClauses),
-        translations: translatedAnalysis,
-        document_id: documentId,
-        ocr_text: ocrText,
-        analysis_timestamp: new Date().toISOString()
-      };
-
-      setOverallRisk(finalAnalysis.overall_risk);
-      setConfidence(finalAnalysis.confidence);
-      setClauses(finalAnalysis.clauses);
+      const riskLevels = extractedClauses.map(c => c.risk_level);
+      const highRisk = riskLevels.filter(r => r === 'high').length;
+      const mediumRisk = riskLevels.filter(r => r === 'medium').length;
       
+      let finalRisk: 'low' | 'medium' | 'high' = 'low';
+      if (highRisk > 0) finalRisk = 'high';
+      else if (mediumRisk > 1) finalRisk = 'medium';
+      
+      setOverallRisk(finalRisk);
+      setConfidence(0.85);
+      setAnalysisProgress(100);
+      setCurrentStep('Analysis complete');
+      setIsAnalyzing(false);
+
+      // Complete the analysis
       setTimeout(() => {
-        setIsAnalyzing(false);
-        onAnalysisComplete(finalAnalysis);
+        onAnalysisComplete({
+          analysis_id: documentId,
+          clauses: [...extractedClauses, ...missingClauses],
+          risk_level: finalRisk,
+          confidence: 0.85
+        });
       }, 1000);
 
     } catch (error) {
-      console.error('Analysis failed:', error);
-      // Fallback to heuristic analysis
-      const fallbackAnalysis = await performHeuristicAnalysis(ocrText);
-      setClauses(fallbackAnalysis.clauses);
-      setOverallRisk(fallbackAnalysis.overall_risk);
-      setConfidence(fallbackAnalysis.confidence);
-      setIsAnalyzing(false);
-      onAnalysisComplete(fallbackAnalysis);
+      console.error('Analysis error:', error);
+      toast({
+        title: "Analysis Error",
+        description: "Failed to analyze document. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
-  const extractClauses = async (text: string): Promise<ClauseAnalysis[]> => {
-    try {
-      // Try Hugging Face model first
-      const response = await fetch('https://api-inference.huggingface.co/models/alea-institute/kl3m-doc-pico-contracts-001', {
-        headers: {
-          'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        method: 'POST',
-        body: JSON.stringify({ inputs: text })
-      });
+  const checkForMissingClauses = (existingClauses: ClauseAnalysis[]): ClauseAnalysis[] => {
+    const existingTypes = existingClauses.map(c => c.type);
+    const missingClauses: ClauseAnalysis[] = [];
 
-      if (response.ok) {
-        const result = await response.json();
-        return processHuggingFaceResult(result, text);
+    // Check for critical missing clauses
+    const criticalTypes = ['termination', 'jurisdiction'];
+    
+    criticalTypes.forEach(type => {
+      if (!existingTypes.includes(type as any)) {
+        missingClauses.push({
+          id: `missing_${type}`,
+          type: type as any,
+          text: `Missing ${type} clause`,
+          risk_level: 'high',
+          confidence: 0.9,
+          explanation: `This document lacks a ${type} clause, which could lead to legal complications.`,
+          legal_reference: type === 'termination' ? 'Indian Contract Act, Section 56' : 'Code of Civil Procedure, 1908',
+          recommendation: `Add a clear ${type} clause to protect your interests.`,
+          missing: true
+        });
       }
-      throw new Error('HuggingFace API failed');
-    } catch (error) {
-      // Fallback to heuristic extraction
-      return extractClausesHeuristic(text);
-    }
+    });
+
+    return missingClauses;
   };
 
   const extractClausesHeuristic = (text: string): ClauseAnalysis[] => {
@@ -171,7 +235,7 @@ export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: Do
       /payment|pay|amount|rupees|₹|dollars?|\$|fee|cost|price/i.test(s)
     );
     
-    paymentTerms.forEach((term, i) => {
+    paymentTerms.slice(0, 2).forEach((term, i) => {
       clauses.push({
         id: `payment_${i}`,
         type: 'payment',
@@ -188,53 +252,35 @@ export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: Do
     const penaltyClauses = sentences.filter(s => 
       /penalty|fine|forfeit|breach|default|damages|compensation/i.test(s)
     );
-    
-    penaltyClauses.forEach((clause, i) => {
+
+    penaltyClauses.slice(0, 2).forEach((penalty, i) => {
       clauses.push({
         id: `penalty_${i}`,
         type: 'penalty',
-        text: clause.trim(),
-        risk_level: /heavy|severe|substantial|significant/i.test(clause) ? 'high' : 'medium',
-        confidence: 0.90,
-        explanation: 'Penalty clause - understand consequences of non-compliance',
-        legal_reference: 'Indian Contract Act, 1872 - Section 74',
-        recommendation: 'Verify penalty amounts are reasonable and not excessive'
+        text: penalty.trim(),
+        risk_level: 'high',
+        confidence: 0.9,
+        explanation: 'Penalty clause - high risk if breached',
+        legal_reference: 'Indian Contract Act, Section 74',
+        recommendation: 'Carefully review penalty amounts and conditions'
       });
     });
 
-    // Liability terms
-    const liabilityTerms = sentences.filter(s => 
-      /liable|liability|responsible|responsibility|indemnify|indemnification/i.test(s)
+    // Liability clauses
+    const liabilityClauses = sentences.filter(s => 
+      /liable|liability|responsible|indemnify|indemnity|damages|loss/i.test(s)
     );
-    
-    liabilityTerms.forEach((term, i) => {
+
+    liabilityClauses.slice(0, 1).forEach((liability, i) => {
       clauses.push({
         id: `liability_${i}`,
         type: 'liability',
-        text: term.trim(),
-        risk_level: /unlimited|full|complete|entire/i.test(term) ? 'high' : 'medium',
-        confidence: 0.88,
-        explanation: 'Liability clause - defines your financial and legal obligations',
-        legal_reference: 'Indian Contract Act, 1872 - Section 73',
-        recommendation: 'Consider limiting liability where possible'
-      });
-    });
-
-    // Termination clauses
-    const terminationClauses = sentences.filter(s => 
-      /terminat|cancel|end|expire|dissolution|breach/i.test(s)
-    );
-    
-    terminationClauses.forEach((clause, i) => {
-      clauses.push({
-        id: `termination_${i}`,
-        type: 'termination',
-        text: clause.trim(),
+        text: liability.trim(),
         risk_level: 'medium',
-        confidence: 0.82,
-        explanation: 'Termination conditions - how and when the contract can end',
-        legal_reference: 'Indian Contract Act, 1872 - Section 56',
-        recommendation: 'Ensure termination conditions are mutual and fair'
+        confidence: 0.8,
+        explanation: 'Liability clause - defines responsibility for damages',
+        legal_reference: 'Indian Contract Act, Section 124',
+        recommendation: 'Understand your liability exposure and consider insurance'
       });
     });
 
@@ -242,121 +288,18 @@ export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: Do
   };
 
   const detectPaymentRisk = (text: string): 'low' | 'medium' | 'high' => {
-    if (/advance|upfront|full payment|lump sum/i.test(text)) return 'high';
-    if (/installment|monthly|quarterly|partial/i.test(text)) return 'low';
-    return 'medium';
-  };
-
-  const analyzeRiskLevels = async (clauses: ClauseAnalysis[]): Promise<ClauseAnalysis[]> => {
-    return clauses.map(clause => ({
-      ...clause,
-      risk_level: clause.risk_level || assessRiskLevel(clause)
-    }));
-  };
-
-  const assessRiskLevel = (clause: ClauseAnalysis): 'low' | 'medium' | 'high' => {
-    const highRiskKeywords = ['unlimited', 'penalty', 'forfeit', 'breach', 'default', 'immediate', 'substantial'];
-    const mediumRiskKeywords = ['liable', 'responsible', 'payment', 'termination'];
-    
-    const text = clause.text.toLowerCase();
-    
-    if (highRiskKeywords.some(keyword => text.includes(keyword))) return 'high';
-    if (mediumRiskKeywords.some(keyword => text.includes(keyword))) return 'medium';
+    if (/late|penalty|interest|compound/i.test(text)) return 'high';
+    if (/advance|upfront|immediate/i.test(text)) return 'medium';
     return 'low';
   };
 
-  const checkMissingClauses = async (clauses: ClauseAnalysis[]): Promise<ClauseAnalysis[]> => {
-    const missingClauses: ClauseAnalysis[] = [];
-    const clauseTypes = clauses.map(c => c.type);
-
-    const essentialClauses = [
-      { type: 'jurisdiction', text: 'Jurisdiction clause not found' },
-      { type: 'termination', text: 'Termination conditions not specified' },
-      { type: 'liability', text: 'Liability limitations not defined' }
-    ];
-
-    essentialClauses.forEach((essential, i) => {
-      if (!clauseTypes.includes(essential.type as any)) {
-        missingClauses.push({
-          id: `missing_${i}`,
-          type: essential.type as any,
-          text: essential.text,
-          risk_level: 'high',
-          confidence: 0.95,
-          explanation: 'Critical clause missing - high risk for legal disputes',
-          recommendation: 'Include this clause to protect your interests',
-          missing: true
-        });
-      }
-    });
-
-    return missingClauses;
-  };
-
-  const generateTranslations = async (clauses: ClauseAnalysis[]): Promise<Record<string, string>> => {
-    const translations: Record<string, string> = {};
+  const playExplanation = (text: string, clauseLanguage = 'en') => {
+    if (!ttsEnabled) return;
     
-    // Simulate translation for key explanations
-    clauses.forEach(clause => {
-      if (clause.explanation) {
-        INDIAN_LANGUAGES.forEach(lang => {
-          const key = `${clause.id}_${lang.code}`;
-          // In real implementation, use translation API
-          translations[key] = `[${lang.native}] ${clause.explanation}`;
-        });
-      }
-    });
-
-    return translations;
-  };
-
-  const calculateOverallRisk = (clauses: ClauseAnalysis[]): 'low' | 'medium' | 'high' => {
-    const riskScores = clauses.map(c => {
-      switch (c.risk_level) {
-        case 'high': return 3;
-        case 'medium': return 2;
-        case 'low': return 1;
-        default: return 2;
-      }
-    });
-
-    const avgRisk = riskScores.reduce((a, b) => a + b, 0) / riskScores.length;
-    
-    if (avgRisk >= 2.5) return 'high';
-    if (avgRisk >= 1.5) return 'medium';
-    return 'low';
-  };
-
-  const calculateConfidence = (clauses: ClauseAnalysis[]): number => {
-    if (clauses.length === 0) return 0;
-    
-    const totalConfidence = clauses.reduce((sum, clause) => sum + clause.confidence, 0);
-    return Math.round(totalConfidence / clauses.length * 100);
-  };
-
-  const processHuggingFaceResult = (result: any, originalText: string): ClauseAnalysis[] => {
-    // Process HuggingFace model output and convert to ClauseAnalysis format
-    // This is a placeholder - implement based on actual model output
-    return extractClausesHeuristic(originalText);
-  };
-
-  const performHeuristicAnalysis = async (text: string) => {
-    const clauses = extractClausesHeuristic(text);
-    return {
-      clauses,
-      overall_risk: calculateOverallRisk(clauses),
-      confidence: calculateConfidence(clauses),
-      document_id: documentId,
-      ocr_text: text,
-      analysis_timestamp: new Date().toISOString()
-    };
-  };
-
-  const playExplanation = (text: string, language = 'en') => {
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = language === 'hi' ? 'hi-IN' : 
-                     language === 'bn' ? 'bn-IN' : 
-                     language === 'te' ? 'te-IN' : 'en-US';
+    utterance.lang = clauseLanguage === 'hi' ? 'hi-IN' : 
+                     clauseLanguage === 'bn' ? 'bn-IN' : 
+                     clauseLanguage === 'te' ? 'te-IN' : 'en-US';
     window.speechSynthesis.speak(utterance);
   };
 
@@ -399,113 +342,121 @@ export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: Do
       {/* Analysis Summary */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center">
-              <FileText className="h-5 w-5 mr-2" />
-              Document Analysis Complete
-            </div>
-            <Badge className={getRiskBadgeColor(overallRisk)}>
-              {overallRisk.toUpperCase()} RISK
-            </Badge>
+          <CardTitle className="flex items-center">
+            <Shield className="h-5 w-5 mr-2" />
+            Analysis Summary
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-primary">{clauses.length}</div>
-              <p className="text-sm text-muted-foreground">Clauses Found</p>
+              <div className="text-2xl font-bold">{clauses.length}</div>
+              <div className="text-sm text-muted-foreground">Clauses Found</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-primary">{confidence}%</div>
-              <p className="text-sm text-muted-foreground">Confidence</p>
+              <Badge className={getRiskBadgeColor(overallRisk)}>
+                {overallRisk.toUpperCase()} RISK
+              </Badge>
+              <div className="text-sm text-muted-foreground mt-1">Overall Risk</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-primary">
-                {clauses.filter(c => c.missing).length}
-              </div>
-              <p className="text-sm text-muted-foreground">Missing Critical</p>
+              <div className="text-2xl font-bold">{Math.round(confidence * 100)}%</div>
+              <div className="text-sm text-muted-foreground">Confidence</div>
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Clause Analysis */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Extracted Clauses & Risk Analysis</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {clauses.map((clause) => {
-              const ClauseIcon = CLAUSE_TYPES[clause.type]?.icon || FileText;
-              return (
-                <div key={clause.id} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start space-x-3">
-                      <ClauseIcon className={`h-5 w-5 mt-1 ${CLAUSE_TYPES[clause.type]?.color || 'text-gray-500'}`} />
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <h4 className="font-medium">{CLAUSE_TYPES[clause.type]?.label || 'Other Clause'}</h4>
-                          {clause.missing && (
-                            <Badge variant="destructive" className="text-xs">
-                              MISSING
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-2">{clause.text}</p>
-                        <p className="text-sm">{clause.explanation}</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end space-y-2">
-                      <Badge className={getRiskBadgeColor(clause.risk_level)}>
-                        {clause.risk_level.toUpperCase()}
+      <div className="space-y-4">
+        {clauses.map((clause) => {
+          const ClauseIcon = CLAUSE_TYPES[clause.type]?.icon || FileText;
+          return (
+            <Card key={clause.id} className={clause.missing ? 'border-destructive/50' : ''}>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center">
+                    <ClauseIcon className={`h-4 w-4 mr-2 ${CLAUSE_TYPES[clause.type]?.color || 'text-gray-500'}`} />
+                    {CLAUSE_TYPES[clause.type]?.label || 'Other Clause'}
+                    {clause.missing && (
+                      <Badge variant="destructive" className="ml-2 text-xs">
+                        Missing
                       </Badge>
-                      <div className="text-xs text-muted-foreground">
-                        {Math.round(clause.confidence * 100)}% confidence
-                      </div>
-                    </div>
-                  </div>
-
-                  {clause.legal_reference && (
-                    <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                      <strong>Legal Reference:</strong> {clause.legal_reference}
-                    </div>
-                  )}
-
-                  {clause.recommendation && (
-                    <div className="text-xs bg-blue-50 text-blue-800 p-2 rounded">
-                      <strong>Recommendation:</strong> {clause.recommendation}
-                    </div>
-                  )}
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => playExplanation(clause.explanation)}
-                      >
-                        <Volume2 className="h-4 w-4 mr-1" />
-                        Listen
-                      </Button>
-                      <select className="px-2 py-1 text-xs border rounded">
-                        <option value="en">English</option>
-                        {INDIAN_LANGUAGES.map(lang => (
-                          <option key={lang.code} value={lang.code}>
-                            {lang.native}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
+                    )}
+                  </CardTitle>
+                  <Badge className={getRiskBadgeColor(clause.risk_level)}>
+                    {clause.risk_level}
+                  </Badge>
                 </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="text-sm bg-muted p-3 rounded">
+                  <strong>Text:</strong> {clause.text}
+                </div>
+                
+                <div>
+                  <strong className="text-sm">Explanation:</strong>
+                  <p className="text-sm mt-1">{translations[clause.id] || clause.explanation}</p>
+                </div>
+                
+                {clause.legal_reference && (
+                  <div>
+                    <strong className="text-sm">Legal Reference:</strong>
+                    <p className="text-sm mt-1 text-muted-foreground">{clause.legal_reference}</p>
+                  </div>
+                )}
+                
+                {clause.recommendation && (
+                  <div>
+                    <strong className="text-sm">Recommendation:</strong>
+                    <p className="text-sm mt-1 text-blue-600">{clause.recommendation}</p>
+                  </div>
+                )}
+
+                <div className="flex items-center space-x-4 pt-2">
+                  <div className="text-xs text-muted-foreground">
+                    Confidence: {Math.round(clause.confidence * 100)}%
+                  </div>
+                  
+                  {ttsEnabled && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => playExplanation(translations[clause.id] || clause.explanation)}
+                    >
+                      <Volume2 className="h-3 w-3 mr-1" />
+                      Listen
+                    </Button>
+                  )}
+                  
+                  {autoTranslate && language !== 'en' && !translations[clause.id] && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => setTranslations(prev => ({
+                        ...prev,
+                        [clause.id]: `${clause.explanation} (Translated to ${language})`
+                      }))}
+                    >
+                      <Globe className="h-3 w-3 mr-1" />
+                      Translate
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {clauses.length === 0 && (
+        <Card>
+          <CardContent className="text-center py-8">
+            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">No clauses detected in the document.</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

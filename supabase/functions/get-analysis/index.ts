@@ -17,96 +17,59 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    if (req.method !== 'GET') {
+    if (req.method !== 'POST') {
       throw new Error('Method not allowed');
     }
 
-    // Extract analysis ID from URL path
-    const url = new URL(req.url);
-    const pathParts = url.pathname.split('/');
-    const analysisId = pathParts[pathParts.length - 1];
+    const { document_id } = await req.json();
 
-    if (!analysisId) {
-      throw new Error('Analysis ID is required');
+    if (!document_id) {
+      throw new Error('No document_id provided');
     }
 
-    // Get analysis with document info
-    const { data: analysis, error } = await supabase
+    // Fetch analysis data
+    const { data: analysisData, error: analysisError } = await supabase
       .from('analyses')
       .select(`
         *,
-        documents (
-          id,
-          original_filename,
-          status,
-          created_at
-        )
+        documents!inner(*)
       `)
-      .eq('id', analysisId)
+      .eq('document_id', document_id)
       .single();
 
-    if (error) throw error;
+    if (analysisError && analysisError.code !== 'PGRST116') {
+      throw analysisError;
+    }
 
-    if (!analysis) {
-      throw new Error('Analysis not found');
+    // If no analysis found, return empty result
+    if (!analysisData) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          message: 'Analysis not found or still processing'
+        }),
+        { 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json' 
+          } 
+        }
+      );
     }
 
     // Format response
     const response = {
-      id: analysis.id,
-      document: {
-        id: analysis.documents.id,
-        filename: analysis.documents.original_filename,
-        status: analysis.documents.status,
-        created_at: analysis.documents.created_at
-      },
-      ocr_text: analysis.ocr_text,
-      ocr_confidence: analysis.ocr_confidence,
-      clauses: analysis.clauses || [],
-      auth_flags: analysis.auth_flags || {},
-      translation_hi: analysis.translation_hi,
-      tts_audio_url: analysis.tts_audio_path ? 
-        `${Deno.env.get('SUPABASE_URL')}/storage/v1/object/public/audio/${analysis.tts_audio_path}` : null,
-      analysis_confidence: analysis.analysis_confidence,
-      created_at: analysis.created_at,
-      processing_steps: [
-        { 
-          step: 1, 
-          name: 'Document Upload', 
-          status: 'completed',
-          description: 'Document successfully uploaded to secure storage'
-        },
-        { 
-          step: 2, 
-          name: 'Image Preprocessing', 
-          status: 'completed',
-          description: 'Image enhanced for better OCR accuracy'
-        },
-        { 
-          step: 3, 
-          name: 'OCR Processing', 
-          status: 'completed',
-          description: `Text extracted with ${Math.round((analysis.ocr_confidence || 0) * 100)}% confidence`
-        },
-        { 
-          step: 4, 
-          name: 'Authentication Check', 
-          status: 'completed',
-          description: `QR/Barcode verification: ${analysis.auth_flags?.qr_present ? 'Found' : 'Not found'}`
-        },
-        { 
-          step: 5, 
-          name: 'Clause Extraction', 
-          status: 'completed',
-          description: `${analysis.clauses?.length || 0} legal clauses identified and analyzed`
-        },
-        { 
-          step: 6, 
-          name: 'Translation & TTS', 
-          status: analysis.translation_hi ? 'completed' : 'skipped',
-          description: analysis.translation_hi ? 'Hindi translation and audio generated' : 'No translation needed'
-        }
-      ]
+      success: true,
+      id: analysisData.id,
+      document_id: analysisData.document_id,
+      ocr_text: analysisData.ocr_text,
+      ocr_confidence: analysisData.ocr_confidence,
+      clauses: analysisData.clauses || [],
+      auth_flags: analysisData.auth_flags || {},
+      tts_audio_path: analysisData.tts_audio_path,
+      translation_hi: analysisData.translation_hi,
+      analysis_confidence: analysisData.analysis_confidence,
+      created_at: analysisData.created_at
     };
 
     return new Response(
@@ -120,6 +83,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
+    console.error('Get analysis error:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
