@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, Shield, FileText, AlertTriangle, Plus, Eye } from "lucide-react";
+import { Upload, Shield, FileText, AlertTriangle, Plus, Eye, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 
@@ -80,14 +80,14 @@ export const Dashboard = () => {
       </div>
 
       {/* Recent Documents and Evidence Records */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <Card className="border-border">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center">
               <FileText className="h-5 w-5 mr-2" />
               Your Recent Documents
             </CardTitle>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/process')}>
               <Plus className="h-4 w-4 mr-1" /> Add New
             </Button>
           </CardHeader>
@@ -114,7 +114,7 @@ export const Dashboard = () => {
               <Shield className="h-5 w-5 mr-2" />
               Your Evidence Records
             </CardTitle>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/evidence')}>
               View All
             </Button>
           </CardHeader>
@@ -136,6 +136,32 @@ export const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Quick Actions */}
+      <Card className="bg-gradient-to-br from-primary/5 to-secondary/5">
+        <CardContent className="p-8 text-center">
+          <h3 className="text-2xl font-bold text-foreground mb-4">
+            Complete Document Processing Workflow
+          </h3>
+          <p className="text-muted-foreground mb-8">
+            Experience the full power of AI-powered legal document verification with HexaVision
+          </p>
+          <div className="flex flex-wrap gap-4 justify-center">
+            <Button onClick={() => navigate('/process')} className="flex items-center space-x-2">
+              <Upload className="h-4 w-4" />
+              <span>Process New Document</span>
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/evidence')}>
+              <Eye className="h-4 w-4 mr-2" />
+              View Evidence Vault
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/settings')}>
+              <Settings className="h-4 w-4 mr-2" />
+              Settings
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };

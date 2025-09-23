@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Shield, FileText, Scan, Fingerprint, Globe, Zap } from "lucide-react";
+import { Shield, FileText, Scan, Fingerprint, Globe, Zap, Upload, Settings, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const Index = () => {
