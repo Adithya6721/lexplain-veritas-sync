@@ -63,6 +63,9 @@ export const ConsentCapture = ({ onConsentComplete, analysisId }: ConsentCapture
         console.log('Location access denied:', error);
       }
     );
+    
+    // Skip phone verification and mark as completed
+    setOtpVerified(true);
   }, []);
 
   const sendOTP = async () => {
@@ -222,7 +225,7 @@ export const ConsentCapture = ({ onConsentComplete, analysisId }: ConsentCapture
   };
 
   const submitConsent = async () => {
-    if (!otpVerified || !voiceRecorded || !fingerprintCaptured) {
+    if (!voiceRecorded || !fingerprintCaptured) {
       toast({
         title: "Incomplete Consent",
         description: "Please complete all verification steps",
@@ -239,8 +242,8 @@ export const ConsentCapture = ({ onConsentComplete, analysisId }: ConsentCapture
       const fingerprintHash = btoa(`fingerprint_${Date.now()}_${Math.random()}`);
 
       const consentData = {
-        phone_number: phone,
-        otp_verified: otpVerified,
+        phone_number: null, // Phone verification skipped
+        otp_verified: true, // Auto-verified since skipped
         voice_recording: audioBlob,
         fingerprint_hash: fingerprintHash,
         location: location,
@@ -287,7 +290,7 @@ export const ConsentCapture = ({ onConsentComplete, analysisId }: ConsentCapture
     });
   };
 
-  const allStepsComplete = otpVerified && voiceRecorded && fingerprintCaptured;
+  const allStepsComplete = voiceRecorded && fingerprintCaptured;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -325,69 +328,14 @@ export const ConsentCapture = ({ onConsentComplete, analysisId }: ConsentCapture
 
           <Separator />
 
-          {/* Phone Verification */}
-          {!otpVerified && (
-            <div className="space-y-4">
-              <h4 className="font-medium flex items-center">
-                <Phone className="h-4 w-4 mr-2" />
-                Step 1: Phone Verification
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="md:col-span-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+91 9876543210"
-                    disabled={otpSent}
-                  />
-                </div>
-                <div className="flex items-end">
-                  <Button 
-                    onClick={sendOTP} 
-                    disabled={otpSent || !phone}
-                    className="w-full"
-                  >
-                    {otpSent ? 'OTP Sent' : 'Send OTP'}
-                  </Button>
-                </div>
-              </div>
-
-              {otpSent && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="md:col-span-2">
-                    <Label htmlFor="otp">Verification Code</Label>
-                    <Input
-                      id="otp"
-                      type="text"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      placeholder="Enter 6-digit code"
-                      maxLength={6}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button 
-                      onClick={verifyOTP} 
-                      disabled={!otp || otp.length !== 6}
-                      className="w-full"
-                    >
-                      Verify OTP
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Phone verification skipped - directly to voice consent */}
 
           {/* Voice Consent */}
-          {otpVerified && !voiceRecorded && (
+          {!voiceRecorded && (
             <div className="space-y-4">
               <h4 className="font-medium flex items-center">
                 <Mic className="h-4 w-4 mr-2" />
-                Step 2: Voice Consent Recording
+                Step 1: Voice Consent Recording
               </h4>
               
               <div className="bg-muted/50 p-4 rounded-lg">
@@ -446,11 +394,11 @@ export const ConsentCapture = ({ onConsentComplete, analysisId }: ConsentCapture
           )}
 
           {/* Fingerprint Capture */}
-          {otpVerified && voiceRecorded && !fingerprintCaptured && (
+          {voiceRecorded && !fingerprintCaptured && (
             <div className="space-y-4">
               <h4 className="font-medium flex items-center">
                 <Fingerprint className="h-4 w-4 mr-2" />
-                Step 3: Biometric Verification
+                Step 2: Biometric Verification
               </h4>
               
               <div className="text-center space-y-4">

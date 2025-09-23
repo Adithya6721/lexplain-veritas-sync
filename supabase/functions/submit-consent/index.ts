@@ -145,24 +145,13 @@ serve(async (req) => {
     const address = formData.get('address') as string;
     const voiceFile = formData.get('voice_file') as File;
 
-    if (!analysisId || !phoneNumber || !otpCode) {
-      throw new Error('Analysis ID, phone number and OTP code are required');
+    if (!analysisId) {
+      throw new Error('Analysis ID is required');
     }
 
-    // 1. Verify OTP
-    const { data: otpRecord, error: otpError } = await supabase
-      .from('otp_verifications')
-      .select('*')
-      .eq('phone_number', phoneNumber)
-      .eq('otp_code', otpCode)
-      .eq('verified', true)
-      .single();
+    // Skip OTP verification - directly proceed to analysis data retrieval
 
-    if (otpError || !otpRecord) {
-      throw new Error('OTP verification failed');
-    }
-
-    // 2. Get analysis data
+    // 1. Get analysis data
     const { data: analysis, error: analysisError } = await supabase
       .from('analyses')
       .select(`
@@ -176,7 +165,7 @@ serve(async (req) => {
       throw new Error('Analysis not found');
     }
 
-    // 3. Upload voice file if provided
+    // 2. Upload voice file if provided
     let voiceFilePath = null;
     if (voiceFile) {
       const fileName = `consent_${analysisId}_${Date.now()}.webm`;
@@ -192,15 +181,15 @@ serve(async (req) => {
       if (uploadError) throw uploadError;
     }
 
-    // 4. Generate fingerprint hash (simulation)
+    // 3. Generate fingerprint hash (simulation)
     const fingerprintHash = CryptoService.generateFingerprintHash();
 
-    // 5. Create consent record
+    // 4. Create consent record
     const { data: consentRecord, error: consentError } = await supabase
       .from('consent_records')
       .insert({
         analysis_id: analysisId,
-        phone_number: phoneNumber,
+        phone_number: phoneNumber || null,
         otp_verified: true,
         fingerprint_hash: fingerprintHash,
         voice_file_path: voiceFilePath,

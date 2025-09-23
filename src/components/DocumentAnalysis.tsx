@@ -303,6 +303,45 @@ export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: Do
     window.speechSynthesis.speak(utterance);
   };
 
+  const translateClause = async (clause: ClauseAnalysis) => {
+    try {
+      const translations_map = {
+        hi: {
+          'Payment clause detected - review terms carefully': 'भुगतान खंड का पता चला - शर्तों की सावधानीपूर्वक समीक्षा करें',
+          'Penalty clause - high risk if breached': 'दंड खंड - उल्लंघन होने पर उच्च जोखिम',
+          'Liability clause - defines responsibility for damages': 'दायित्व खंड - नुकसान की जिम्मेदारी को परिभाषित करता है',
+          'Ensure payment terms are clearly defined with specific amounts and deadlines': 'सुनिश्चित करें कि भुगतान की शर्तें विशिष्ट राशि और समय सीमा के साथ स्पष्ट रूप से परिभाषित हैं',
+          'Carefully review penalty amounts and conditions': 'दंड राशि और शर्तों की सावधानीपूर्वक समीक्षा करें',
+          'Understand your liability exposure and consider insurance': 'अपने दायित्व जोखिम को समझें और बीमा पर विचार करें'
+        },
+        bn: {
+          'Payment clause detected - review terms carefully': 'পেমেন্ট ক্লজ সনাক্ত - শর্তাবলী সাবধানে পর্যালোচনা করুন',
+          'Penalty clause - high risk if breached': 'পেনাল্টি ক্লজ - লঙ্ঘিত হলে উচ্চ ঝুঁকি',
+          'Liability clause - defines responsibility for damages': 'দায়বদ্ধতার ক্লজ - ক্ষতির জন্য দায়িত্ব নির্ধারণ করে'
+        },
+        te: {
+          'Payment clause detected - review terms carefully': 'చెల్లింపు నిబంధన గుర్తించబడింది - నిబంధనలను జాగ్రత్తగా సమీక్షించండి',
+          'Penalty clause - high risk if breached': 'పెనాల్టీ నిబంధన - ఉల్లంఘిస్తే అధిక ప్రమాదం',
+          'Liability clause - defines responsibility for damages': 'బాధ్యత నిబంధన - నష్టాలకు బాధ్యత నిర్వచిస్తుంది'
+        }
+      };
+
+      const languageMap = translations_map[language] || {};
+      const translated = languageMap[clause.explanation] || `${clause.explanation} (Translation not available for ${language})`;
+
+      setTranslations(prev => ({
+        ...prev,
+        [clause.id]: translated
+      }));
+    } catch (error) {
+      console.error('Translation error:', error);
+      setTranslations(prev => ({
+        ...prev,
+        [clause.id]: `${clause.explanation} (Translation failed)`
+      }));
+    }
+  };
+
   const getRiskBadgeColor = (risk: string) => {
     switch (risk) {
       case 'high': return 'bg-destructive/20 text-destructive';
@@ -433,13 +472,10 @@ export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: Do
                     <Button 
                       variant="ghost" 
                       size="sm"
-                      onClick={() => setTranslations(prev => ({
-                        ...prev,
-                        [clause.id]: `${clause.explanation} (Translated to ${language})`
-                      }))}
+                      onClick={() => translateClause(clause)}
                     >
                       <Globe className="h-3 w-3 mr-1" />
-                      Translate
+                      Translate to {language.toUpperCase()}
                     </Button>
                   )}
                 </div>
@@ -454,6 +490,36 @@ export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: Do
           <CardContent className="text-center py-8">
             <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground">No clauses detected in the document.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Proceed to Consent Button */}
+      {clauses.length > 0 && (
+        <Card className="mt-6">
+          <CardContent className="text-center py-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-center space-x-2 text-success mb-4">
+                <CheckCircle className="h-6 w-6" />
+                <h3 className="text-lg font-medium">Document Analysis Complete</h3>
+              </div>
+              <p className="text-muted-foreground mb-6">
+                Review the analysis results above, then proceed to generate tamper-evident evidence with biometric consent.
+              </p>
+              <Button 
+                onClick={() => onAnalysisComplete({
+                  analysis_id: documentId,
+                  clauses,
+                  overall_risk: overallRisk,
+                  confidence,
+                  ocr_text: ocrText
+                })}
+                size="lg"
+                className="px-8"
+              >
+                Proceed to Biometric Consent
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
