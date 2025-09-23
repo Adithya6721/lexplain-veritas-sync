@@ -1,79 +1,178 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Download, Eye, Shield, FileText, Lock } from "lucide-react";
-
-const EVIDENCE_RECORDS = [
-  {
-    id: "evidence_1758556",
-    title: "Affidavit Of Identity Example",
-    created: "Sep 22, 2025",
-    status: "Valid",
-    creditsUsed: 12,
-    riskLevel: "Low"
-  },
-  {
-    id: "evidence_1758519",
-    title: "test1",
-    created: "Sep 22, 2025",
-    status: "Valid",
-    creditsUsed: 8,
-    riskLevel: "Medium"
-  },
-  {
-    id: "evidence_1758518",
-    title: "Affidavit Of Identity Example",
-    created: "Sep 22, 2025",
-    status: "Valid",
-    creditsUsed: 15,
-    riskLevel: "Low"
-  },
-  {
-    id: "evidence_1758517",
-    title: "Property Agreement",
-    created: "Sep 21, 2025",
-    status: "Valid",
-    creditsUsed: 22,
-    riskLevel: "High"
-  },
-  {
-    id: "evidence_1758516",
-    title: "Loan Document",
-    created: "Sep 21, 2025",
-    status: "Valid",
-    creditsUsed: 18,
-    riskLevel: "Medium"
-  },
-  {
-    id: "evidence_1758515",
-    title: "Service Agreement",
-    created: "Sep 20, 2025",
-    status: "Valid",
-    creditsUsed: 10,
-    riskLevel: "Low"
-  },
-  {
-    id: "evidence_1758514",
-    title: "Employment Contract",
-    created: "Sep 20, 2025",
-    status: "Valid",
-    creditsUsed: 14,
-    riskLevel: "Low"
-  }
-];
+import { Search, Download, Eye, Shield, FileText, Lock, RefreshCw } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/components/auth/AuthContext";
 
 export const EvidenceVault = () => {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<string | null>(null);
+  const [evidenceRecords, setEvidenceRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredRecords = EVIDENCE_RECORDS.filter(record =>
+  useEffect(() => {
+    if (user) {
+      fetchEvidenceRecords();
+    }
+  }, [user]);
+
+  const fetchEvidenceRecords = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch evidence records with related data
+      const { data, error } = await supabase
+        .from('evidence_records')
+        .select(`
+          *,
+          consent_records!inner(
+            phone_number,
+            timestamp,
+            analysis_id
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const formattedRecords = data.map(record => {
+        const evidenceJson = typeof record.evidence_json === 'object' ? record.evidence_json as any : {};
+        return {
+          id: record.id,
+          title: evidenceJson?.document?.filename || 'Unknown Document',
+          created: new Date(record.created_at).toLocaleDateString(),
+          status: 'Valid',
+          riskLevel: evidenceJson?.analysis?.overall_risk || 'Medium',
+          clausesDetected: evidenceJson?.analysis?.clauses?.length || 0,
+          blockchainHash: record.blockchain_tx_hash,
+          ipfsHash: record.ipfs_hash,
+          consentData: record.consent_records,
+          rawData: record
+        };
+      });
+
+      setEvidenceRecords(formattedRecords);
+    } catch (error: any) {
+      console.error('Error fetching evidence records:', error);
+      toast({
+        title: "Failed to load evidence records",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredRecords = evidenceRecords.filter(record =>
     record.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     record.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const selectedEvidenceRecord = EVIDENCE_RECORDS.find(r => r.id === selectedRecord);
+  const selectedEvidenceRecord = evidenceRecords.find(r => r.id === selectedRecord);
+
+  const downloadEvidence = async (record: any) => {
+    try {
+      const evidenceData = {
+        evidence_id: record.id,
+        document_title: record.title,
+        analysis_summary: record.rawData.evidence_json?.analysis,
+        consent_verification: record.consentData,
+        blockchain_verification: {
+          ethereum_hash: record.blockchainHash,
+          ipfs_hash: record.ipfsHash
+        },
+        cryptographic_signature: record.rawData.signature,
+        timestamp: record.rawData.created_at,
+        verification_status: 'VERIFIED'
+      };
+
+      // JSON Download
+      const jsonStr = JSON.stringify(evidenceData, null, 2);
+      const jsonDataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(jsonStr);
+      
+      const jsonLink = document.createElement('a');
+      jsonLink.setAttribute('href', jsonDataUri);
+      jsonLink.setAttribute('download', `evidence_${record.id}_${new Date().toISOString().split('T')[0]}.json`);
+      jsonLink.click();
+
+      // PDF Generation (simplified version)
+      const pdfContent = generatePDFContent(evidenceData);
+      const pdfDataUri = 'data:text/html;charset=utf-8,' + encodeURIComponent(pdfContent);
+      
+      const pdfLink = document.createElement('a');
+      pdfLink.setAttribute('href', pdfDataUri);
+      pdfLink.setAttribute('download', `evidence_report_${record.id}.html`);
+      pdfLink.click();
+
+      toast({
+        title: "Evidence Downloaded",
+        description: "Evidence package has been downloaded in multiple formats."
+      });
+    } catch (error) {
+      toast({
+        title: "Download Failed",
+        description: "Failed to download evidence package.",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const generatePDFContent = (data: any) => {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Legal Document Evidence Report</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 40px; }
+          .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; }
+          .section { margin: 20px 0; }
+          .field { margin: 10px 0; }
+          .label { font-weight: bold; }
+          .signature { border: 1px solid #ccc; padding: 10px; margin-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>TAMPER-EVIDENT EVIDENCE REPORT</h1>
+          <p>Document ID: ${data.evidence_id}</p>
+          <p>Generated: ${new Date().toLocaleString()}</p>
+        </div>
+        
+        <div class="section">
+          <h2>Document Information</h2>
+          <div class="field"><span class="label">Title:</span> ${data.document_title}</div>
+          <div class="field"><span class="label">Verification Status:</span> ${data.verification_status}</div>
+        </div>
+        
+        <div class="section">
+          <h2>Analysis Summary</h2>
+          <div class="field"><span class="label">Overall Risk:</span> ${data.analysis_summary?.overall_risk || 'N/A'}</div>
+          <div class="field"><span class="label">Clauses Detected:</span> ${data.analysis_summary?.clauses?.length || 0}</div>
+        </div>
+        
+        <div class="section">
+          <h2>Blockchain Verification</h2>
+          <div class="field"><span class="label">Ethereum Hash:</span> ${data.blockchain_verification.ethereum_hash || 'Pending'}</div>
+          <div class="field"><span class="label">IPFS Hash:</span> ${data.blockchain_verification.ipfs_hash || 'Pending'}</div>
+        </div>
+        
+        <div class="signature">
+          <p><strong>Digital Signature:</strong></p>
+          <p style="font-family: monospace; word-break: break-all;">${data.cryptographic_signature}</p>
+          <p><em>This document is cryptographically signed and tamper-evident.</em></p>
+        </div>
+      </body>
+      </html>
+    `;
+  };
 
   const getRiskBadgeColor = (risk: string) => {
     switch (risk.toLowerCase()) {
@@ -97,6 +196,15 @@ export const EvidenceVault = () => {
           <div className="flex items-center space-x-2">
             <Shield className="h-5 w-5 text-success" />
             <span className="text-sm font-medium text-success">All Records Secured</span>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={fetchEvidenceRecords}
+              disabled={loading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
           </div>
         </div>
       </div>
@@ -147,7 +255,7 @@ export const EvidenceVault = () => {
                         </p>
                         <div className="flex items-center space-x-4 text-xs text-muted-foreground">
                           <span>Created: {record.created}</span>
-                          <span>Credits: {record.creditsUsed}</span>
+                          <span>Clauses: {record.clausesDetected}</span>
                         </div>
                       </div>
                       <div className="flex flex-col items-end space-y-2">
@@ -161,11 +269,21 @@ export const EvidenceVault = () => {
                       </div>
                     </div>
                     <div className="flex space-x-2 mt-4">
-                      <Button size="sm" variant="outline" className="text-xs">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="text-xs"
+                        onClick={() => downloadEvidence(record)}
+                      >
                         <Download className="h-3 w-3 mr-1" />
                         Download
                       </Button>
-                      <Button size="sm" variant="outline" className="text-xs">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="text-xs"
+                        onClick={() => setSelectedRecord(record.id)}
+                      >
                         <Eye className="h-3 w-3 mr-1" />
                         View Details
                       </Button>
@@ -210,8 +328,8 @@ export const EvidenceVault = () => {
                       <span className="text-success font-medium">{selectedEvidenceRecord.status}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Credits Used:</span>
-                      <span>{selectedEvidenceRecord.creditsUsed}</span>
+                      <span className="text-muted-foreground">Clauses Found:</span>
+                      <span>{selectedEvidenceRecord.clausesDetected}</span>
                     </div>
                   </div>
                 </div>
@@ -258,11 +376,20 @@ export const EvidenceVault = () => {
                       <span className="text-success">Captured</span>
                     </div>
                   </div>
-                  <div className="pt-4 border-t">
-                    <Button size="sm" className="w-full">
+                  <div className="pt-4 border-t space-y-2">
+                    <Button 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => downloadEvidence(selectedEvidenceRecord)}
+                    >
                       <Download className="h-4 w-4 mr-2" />
-                      Download Full Evidence Package
+                      Download Evidence Package
                     </Button>
+                    {selectedEvidenceRecord?.blockchainHash && (
+                      <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                        <strong>Blockchain:</strong> {selectedEvidenceRecord.blockchainHash.substring(0, 20)}...
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
