@@ -241,35 +241,40 @@ export const ConsentCapture = ({ onConsentComplete, analysisId }: ConsentCapture
       // Generate fingerprint hash (simulation)
       const fingerprintHash = btoa(`fingerprint_${Date.now()}_${Math.random()}`);
 
-      const consentData = {
-        phone_number: null, // Phone verification skipped
-        otp_verified: true, // Auto-verified since skipped
-        voice_recording: audioBlob,
-        fingerprint_hash: fingerprintHash,
-        location: location,
-        consent_phrase: CONSENT_PHRASES[currentLanguage],
-        language: currentLanguage,
-        timestamp: new Date().toISOString(),
-        analysis_id: analysisId
-      };
-
-      // Submit consent
-      const { data, error } = await supabase.functions.invoke('submit-consent', {
-        body: {
-          ...consentData,
-          voice_file: await blobToBase64(audioBlob)
-        }
+      // Create FormData as expected by the edge function
+      const formData = new FormData();
+      formData.append('analysis_id', analysisId);
+      formData.append('phone_number', ''); // Empty as phone verification is skipped
+      formData.append('otp_code', ''); // Empty as OTP is skipped
+      formData.append('latitude', location?.latitude?.toString() || '');
+      formData.append('longitude', location?.longitude?.toString() || '');
+      formData.append('address', location?.address || '');
+      formData.append('voice_file', audioBlob, 'consent-recording.webm');
+      
+      // Submit consent using fetch directly since we need FormData
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/submit-consent`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY
+        },
+        body: formData
       });
 
-      if (error) throw error;
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to submit consent');
+      }
 
       toast({
         title: "Consent Submitted",
-        description: "Your consent has been securely recorded"
+        description: "Your consent has been securely recorded and evidence generated"
       });
 
-      onConsentComplete(data);
+      onConsentComplete(result);
     } catch (error: any) {
+      console.error('Consent submission error:', error);
       toast({
         title: "Consent Submission Failed",
         description: error.message,

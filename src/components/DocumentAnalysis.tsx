@@ -40,6 +40,7 @@ interface DocumentAnalysisProps {
   documentId: string;
   ocrText: string;
   onAnalysisComplete: (analysis: any) => void;
+  onProceedToConsent?: () => void;
 }
 
 const CLAUSE_TYPES = {
@@ -52,7 +53,7 @@ const CLAUSE_TYPES = {
   other: { icon: FileText, label: 'Other Clauses', color: 'text-gray-500' }
 };
 
-export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: DocumentAnalysisProps) => {
+export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete, onProceedToConsent }: DocumentAnalysisProps) => {
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('Initializing...');
   const [clauses, setClauses] = useState<ClauseAnalysis[]>([]);
@@ -507,13 +508,16 @@ export const DocumentAnalysis = ({ documentId, ocrText, onAnalysisComplete }: Do
                 Review the analysis results above, then proceed to generate tamper-evident evidence with biometric consent.
               </p>
               <Button 
-                onClick={() => onAnalysisComplete({
-                  analysis_id: documentId,
-                  clauses,
-                  overall_risk: overallRisk,
-                  confidence,
-                  ocr_text: ocrText
-                })}
+                onClick={() => {
+                  onAnalysisComplete({
+                    analysis_id: documentId,
+                    clauses,
+                    overall_risk: overallRisk,
+                    confidence,
+                    ocr_text: ocrText
+                  });
+                  onProceedToConsent?.();
+                }}
                 size="lg"
                 className="px-8"
               >

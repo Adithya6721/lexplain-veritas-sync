@@ -218,6 +218,7 @@ export const DocumentUpload = () => {
           documentId={documentId}
           ocrText={ocrText}
           onAnalysisComplete={handleAnalysisComplete}
+          onProceedToConsent={() => setCurrentPhase('consent')}
         />
       </div>
     );
