@@ -4,7 +4,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
-import { ProcessingWorkflow } from "@/components/ProcessingWorkflow";
+import { Header } from "@/components/Header";
+import { Dashboard } from "@/components/Dashboard";
+import { DocumentUpload } from "@/components/DocumentUpload";
 import { EvidenceVault } from "@/components/EvidenceVault";
 import { AuthProvider, useAuth } from "@/components/auth/AuthContext";
 import { AuthForm } from "@/components/auth/AuthForm";
@@ -44,12 +46,16 @@ const App = () => (
               <Route path="/welcome" element={<Index />} />
               <Route path="/*" element={
                 <ProtectedRoute>
-                  <Routes>
-                    <Route path="/" element={<Navigate to="/process" replace />} />
-                    <Route path="/process" element={<ProcessingWorkflow />} />
-                    <Route path="/evidence" element={<EvidenceVault />} />
-                    <Route path="/settings" element={<Settings />} />
-                  </Routes>
+                  <div className="min-h-screen bg-background">
+                    <Header />
+                    <Routes>
+                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/process" element={<DocumentUpload />} />
+                      <Route path="/evidence" element={<EvidenceVault />} />
+                      <Route path="/settings" element={<Settings />} />
+                    </Routes>
+                  </div>
                 </ProtectedRoute>
               } />
             </Routes>
