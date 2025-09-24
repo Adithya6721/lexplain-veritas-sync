@@ -63,7 +63,7 @@ const Index = () => {
             <Button 
               size="lg" 
               className="px-8 py-3 text-lg"
-              onClick={() => navigate('/process')}
+              onClick={() => navigate('/dashboard')}
             >
               Get Started
             </Button>
@@ -137,7 +137,7 @@ const Index = () => {
               <Button 
                 size="lg" 
                 className="px-8 py-3"
-                onClick={() => navigate('/process')}
+                onClick={() => navigate('/dashboard')}
               >
                 Start Processing Now
               </Button>
